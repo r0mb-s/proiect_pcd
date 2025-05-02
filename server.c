@@ -8,6 +8,7 @@
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <sys/inotify.h>
+#include "log.h"
 
 #define PORT 8090
 #define ADMIN_SOCKET_PATH "/tmp/pcd_admin_socket"
@@ -17,6 +18,9 @@
 #define OUTGOING_FOLDER "outgoing/"
 #define MAX_NUMBER_OF_CLIENTS 100
 #define MAX_NUMBER_OF_ADMINS 1
+#define LOG_FILE "/tmp/pcd_log_file"
+
+Logger logger;
 
 void *admin_function(void *arg) {
     int server_fd, admin_fd;
@@ -57,6 +61,8 @@ void *admin_function(void *arg) {
 }
 
 void* handle_client(void* client_socket) {
+    log_message(&logger, "Client connected");
+
     int client_fd = *((int*)client_socket);
     char buffer[BUFFER_SIZE];
     
@@ -150,6 +156,7 @@ void *notify_function(void *arg){
         if (event->len) {
             if (event->mask & IN_CREATE) {
                 enqueue(queue, event->name);
+                log_message(&logger, "Found file");
             }
         }
     }
@@ -174,6 +181,9 @@ void *processing_function(void *arg) {
 }
 
 int main() {
+    logger.log_file = LOG_FILE;
+    log_message(&logger, "Start");
+
     pthread_t admin_thread;
     pthread_t clients_thread;
     pthread_t soap_thread;
@@ -183,6 +193,7 @@ int main() {
 
     Queue queue;
     init_queue(&queue);
+    log_message(&logger, "Initialised queue");
 
     pthread_attr_init(&threads_attr);
     pthread_attr_setdetachstate(&threads_attr, PTHREAD_CREATE_DETACHED);
