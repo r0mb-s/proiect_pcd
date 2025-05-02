@@ -8,6 +8,11 @@ int is_empty(Queue *q) {
     return 0;
 }
 
+void init_queue(Queue *q) {
+    q->front = NULL;
+    q->rear = NULL;
+}
+
 void enqueue(Queue *q, char *file_name) {
     if (q == NULL || file_name == NULL)
         return;

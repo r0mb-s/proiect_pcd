@@ -143,14 +143,14 @@ void *notify_function(void *arg){
     while (1) {
         int length = read(inotify_fd, buffer, sizeof(struct inotify_event) + NAME_MAX + 1);
         if (length <= 0) {
-            perror("Couldn't read from inotify");
             // TO DO //
         }
 
         struct inotify_event *event = (struct inotify_event *)buffer;
         if (event->len) {
-            if (event->mask & IN_CREATE)
+            if (event->mask & IN_CREATE) {
                 enqueue(queue, event->name);
+            }
         }
     }
 
@@ -181,8 +181,8 @@ int main() {
     pthread_t notify_processing;
     pthread_attr_t threads_attr;
 
-    Queue *queue;
-    init_queue(queue);
+    Queue queue;
+    init_queue(&queue);
 
     pthread_attr_init(&threads_attr);
     pthread_attr_setdetachstate(&threads_attr, PTHREAD_CREATE_DETACHED);
@@ -199,11 +199,11 @@ int main() {
         perror("Failed to create thread");
         exit(EXIT_FAILURE);
     }
-    if (pthread_create(&processing_thread, NULL, processing_function, queue) != 0) {
+    if (pthread_create(&processing_thread, NULL, processing_function, &queue) != 0) {
         perror("Failed to create thread");
         exit(EXIT_FAILURE);
     }
-    if (pthread_create(&notify_processing, NULL, notify_function, queue) != 0) {
+    if (pthread_create(&notify_processing, NULL, notify_function, &queue) != 0) {
         perror("Failed to create thread");
         exit(EXIT_FAILURE);
     }
