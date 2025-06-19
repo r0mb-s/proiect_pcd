@@ -18,7 +18,7 @@ void enqueue(Queue *q, char *file_name) {
         return;
 
     Node *newNode = (Node *)malloc(sizeof(Node));
-    strncpy(newNode->file_name, file_name, NAME_MAX - 1);
+    memcpy(newNode->file, file_name, FILE_NAME_LEN);
     newNode->next = NULL;
 
     if (q->rear == NULL) {
@@ -36,7 +36,7 @@ void dequeue(Queue *q, char *res) {
     }
 
     Node *temp = q->front;
-    strncpy(res, temp->file_name, NAME_MAX - 1);
+    memcpy(res, temp->file, FILE_NAME_LEN);
 
     q->front = q->front->next;
     if (q->front == NULL)

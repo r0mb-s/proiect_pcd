@@ -2,9 +2,12 @@
 #define QUEUE_H
 
 #include <linux/limits.h>
+#include <uuid/uuid.h>
+
+#define FILE_NAME_LEN 74
 
 typedef struct Node {
-    char file_name[NAME_MAX + 1];
+    char file[FILE_NAME_LEN];
     struct Node *next;
 } Node;
 
