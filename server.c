@@ -350,7 +350,7 @@ void *processing_function(void *arg) {
             printf("file path: %s\n", file_path);
 
             int file_fd;
-            if((file_fd = open(file_path, O_RDONLY)) == -1) {
+            if ((file_fd = open(file_path, O_RDONLY)) == -1) {
                 perror("Couldn't open file in processing function!");
                 // TO DO //
                 exit(EXIT_FAILURE);
@@ -360,28 +360,32 @@ void *processing_function(void *arg) {
             char content_buffer[BUFFER_SIZE];
 
             int algorithm, key_len, enc_dec;
-            if((bytes_read = read(file_fd, &algorithm, sizeof(int))) <= 0){
+            if ((bytes_read = read(file_fd, &algorithm, sizeof(int))) <= 0) {
                 fprintf(stderr, "couldnt read algorithm in processing function");
             }
-            if((bytes_read = read(file_fd, &key_len, sizeof(int))) <= 0){
+            if ((bytes_read = read(file_fd, &key_len, sizeof(int))) <= 0) {
                 fprintf(stderr, "couldnt read key_len in processing function");
             }
 
             char key[key_len];
-            if((bytes_read = read(file_fd, &key, key_len)) <= 0){
+            if ((bytes_read = read(file_fd, &key, key_len)) <= 0) {
                 fprintf(stderr, "couldnt read key in processing function");
             }
 
-            if((bytes_read = read(file_fd, &enc_dec, sizeof(int))) <= 0){
+            if ((bytes_read = read(file_fd, &enc_dec, sizeof(int))) <= 0) {
                 fprintf(stderr, "couldnt read enc_dec in processing function");
             }
 
+            lseek(file_fd, 0, SEEK_SET);
+            close(file_fd);
+
             printf("Algorithm: %d, Key length: %d, Key: %.*s, Enc or dec: %d\n", algorithm, key_len, key_len, key, enc_dec);
 
-            while((bytes_read = read(file_fd, content_buffer, sizeof(content_buffer))) > 0) {
-                printf("buffer: %.*s\n", (int) bytes_read, content_buffer);
-
-                run_symmetric(algorithm, enc_dec, file_path, out_path, key);
+            printf("strlen for %s: %lu\n", key, strlen(key));
+            run_symmetric(algorithm, enc_dec, file_path, out_path, key);
+            if(remove(file_path) != 0) {
+                perror("Couldn't remove file from processing");
+                exit(EXIT_FAILURE);
             }
         }
     }

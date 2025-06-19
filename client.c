@@ -10,7 +10,8 @@
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8090
 #define BUFFER_SIZE 1023
-#define FILE_TO_SEND "random.txt"
+#define FILE_TO_SEND "lorem.txt"
+// #define FILE_TO_SEND "random.txt"
 
 void show_buff_int_uuid(char *buf, char *user_msg) {
     int msg, msg_len;
@@ -56,11 +57,12 @@ int main() {
     int message_no = 1;
     int algorithm = 0;
     int key_len = 8;
-    int enc_dec = 1;
+    int enc_dec = 0;
     char key[key_len];
-    for(int i = 0; i < key_len; i++){
+    for(int i = 0; i < key_len - 1; i++){
         key[i] = 'a';
     }
+    key[key_len - 1] = '\0';
     memcpy(buffer, &message_no, sizeof(int));
     memcpy(buffer + sizeof(int), &algorithm, sizeof(int));
     memcpy(buffer + 2 * sizeof(int), &key_len, sizeof(int));

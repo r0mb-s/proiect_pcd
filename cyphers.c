@@ -26,6 +26,24 @@ int encrypt_aes256_cbc(const char *infile, const char *outfile, const char *pass
         return 0;
     }
 
+    if (fseek(fin, 20, SEEK_SET) != 0)
+    {
+        perror("fseek");
+        fclose(fin);
+        fclose(fout);
+        return 0;
+    }
+
+    // unsigned char buffer[BUF_SIZE];
+    // size_t bytesRead;
+    // while ((bytesRead = fread(buffer, 1, BUF_SIZE, fin)) > 0)
+    // {
+    //     fwrite(buffer, 1, bytesRead, stdout); // Print to console
+    // }
+    // fwrite("\n", 1, 1, stdout);
+
+    // return 1;
+
     unsigned char key[KEY_SIZE], iv[IV_SIZE];
     if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), NULL,
                         (unsigned char *)password, strlen(password), 10000, key, iv))
@@ -80,6 +98,14 @@ int decrypt_aes256_cbc(const char *infile, const char *outfile, const char *pass
     if (!fin || !fout)
     {
         perror("fopen");
+        return 0;
+    }
+
+    if (fseek(fin, 20, SEEK_SET) != 0)
+    {
+        perror("fseek");
+        fclose(fin);
+        fclose(fout);
         return 0;
     }
 
