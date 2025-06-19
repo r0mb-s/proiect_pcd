@@ -11,6 +11,7 @@ struct Header {
     char key[255];
     int enc_dec;
     int message_len;
+    int client_socket;
     uuid_t user_uuid;
     uuid_t job_uuid;
 } typedef Header;

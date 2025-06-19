@@ -142,7 +142,6 @@ void *clients_function(void *arg) {
                     }
                 } else {
                     int bytes_read = read(fds[i].fd, buffer, BUFFER_SIZE);
-                    printf("Read\n");
                     if (bytes_read <= 0) {
                         printf("BELEA FOARTE MARE\n");
                         close(fds[i].fd);
@@ -151,75 +150,105 @@ void *clients_function(void *arg) {
                         i--;
                     } else {
                         Header header;
+                        init_header(&header);
                         header_from_buffer(&header, buffer, BUFFER_SIZE);
+                        print_header(&header);
+                        if (header.up_down == 0) {
+                            if (header.first_middle_last == 1) {
+                                printf("First message\n");
+                                uuid_t job_uuid;
+                                char job_uuid_string[37], client_uuid_string[37];
 
-                        if (header.first_middle_last == 1) {
-                            printf("First message\n");
-                            uuid_t job_uuid;
-                            char job_uuid_string[37], client_uuid_string[37];
+                                uuid_generate(job_uuid);
+                                memcpy(header.user_uuid, clients_uuid[i], sizeof(uuid_t));
+                                memcpy(header.job_uuid, job_uuid, sizeof(uuid_t));
 
-                            uuid_generate(job_uuid);
-                            memcpy(header.user_uuid, clients_uuid[i], sizeof(uuid_t));
-                            memcpy(header.job_uuid, job_uuid, sizeof(uuid_t));
+                                uuid_unparse(header.job_uuid, job_uuid_string);
+                                uuid_unparse(header.user_uuid, client_uuid_string);
 
-                            uuid_unparse(header.job_uuid, job_uuid_string);
-                            uuid_unparse(header.user_uuid, client_uuid_string);
+                                char file_path[sizeof(INCOMPLETE_FOLDER) + sizeof(client_uuid_string) + 1 + sizeof(job_uuid_string) + 1];
+                                make_packet(&header, buffer, BUFFER_SIZE);
 
-                            char file_path[sizeof(INCOMPLETE_FOLDER) + sizeof(client_uuid_string) + 1 + sizeof(job_uuid_string) + 1];
-                            make_packet(&header, buffer, BUFFER_SIZE);
+                                if (write(fds[i].fd, buffer, BUFFER_SIZE) == -1) {
+                                    perror("Couldn't write job uuid to client!");
+                                    // TO DO //
+                                }
 
-                            if (write(fds[i].fd, buffer, BUFFER_SIZE) == -1) {
-                                perror("Couldn't write job uuid to client!");
-                                // TO DO //
-                            }
+                                snprintf(file_path, sizeof(file_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
 
-                            snprintf(file_path, sizeof(file_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
+                                if ((clients_fd[i] = open(file_path, O_WRONLY | O_CREAT | O_APPEND, 0644)) == -1) {
+                                    perror("Couldn't create job file!");
+                                    // TO DO //
+                                }
 
-                            if ((clients_fd[i] = open(file_path, O_WRONLY | O_CREAT | O_APPEND, 0644)) == -1) {
-                                perror("Couldn't create job file!");
-                                // TO DO //
-                            }
+                                ssize_t bytes_written;
+                                if ((bytes_written = write(clients_fd[i], &header, sizeof(Header))) <= 0) {
+                                    perror("Couldn't write to client file!");
+                                    // TO DO //
+                                }
+                            } else if (header.first_middle_last == 0) {
+                                printf("Middle message\n");
+                                ssize_t bytes_written;
+                                if ((bytes_written = write(clients_fd[i], buffer + sizeof(Header), header.message_len)) <= 0) {
+                                    perror("Couldn't write to client file!");
+                                    exit(EXIT_FAILURE);
+                                }
+                            } else if (header.first_middle_last == 2) {
+                                printf("AM ajuns la ultimul pachet\n");
 
-                            ssize_t bytes_written;
-                            if ((bytes_written = write(clients_fd[i], &header, sizeof(Header))) <= 0) {
-                                perror("Couldn't write to client file!");
-                                // TO DO //
-                            }
-                        } else if (header.first_middle_last == 0) {
-                            printf("Middle message\n");
-                            ssize_t bytes_written;
-                            if ((bytes_written = write(clients_fd[i], buffer + sizeof(Header), header.message_len)) <= 0) {
-                                perror("Couldn't write to client file!");
+                                close(clients_fd[i]);
+
+                                char incomplete_path[sizeof(INCOMPLETE_FOLDER) + FILE_NAME_LEN];
+                                char process_file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
+
+                                char job_uuid_string[37], client_uuid_string[37];
+
+                                uuid_unparse(header.job_uuid, job_uuid_string);
+                                uuid_unparse(header.user_uuid, client_uuid_string);
+
+                                snprintf(incomplete_path, sizeof(incomplete_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
+                                snprintf(process_file_path, sizeof(process_file_path), "%s%s_%s", PROCESSING_FOLDER, client_uuid_string, job_uuid_string);
+
+                                printf("incomplete path: %s\n", incomplete_path);
+                                printf("processing path: %s\n", process_file_path);
+
+                                if (rename(incomplete_path, process_file_path) == -1) {
+                                    perror("error on move");
+                                    exit(EXIT_FAILURE);
+                                }
+                            } else {
                                 exit(EXIT_FAILURE);
                             }
-                        } else if (header.first_middle_last == 2) {
-                            printf("AM ajuns la ultimul pachet\n");
-
-                            close(clients_fd[i]);
-
-                            char incomplete_path[sizeof(INCOMPLETE_FOLDER) + FILE_NAME_LEN];
-                            char process_file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
-
-                            char job_uuid_string[37], client_uuid_string[37];
-
-                            uuid_unparse(header.job_uuid, job_uuid_string);
-                            uuid_unparse(header.user_uuid, client_uuid_string);
-
-                            snprintf(incomplete_path, sizeof(incomplete_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
-                            snprintf(process_file_path, sizeof(process_file_path), "%s%s_%s", PROCESSING_FOLDER, client_uuid_string, job_uuid_string);
-
-                            printf("incomplete path: %s\n", incomplete_path);
-                            printf("processing path: %s\n", process_file_path);
-
-                            if (rename(incomplete_path, process_file_path) == -1) {
-                                perror("error on move");
-                                // TO DO //
-                            }
-                            continue;
                         } else {
-                            printf("Belea mare\n");
-                            close(clients_fd[i]);
-                            exit(EXIT_FAILURE);
+                            if (header.first_middle_last == 1) {
+                                uuid_t download_uuid;
+                                char user_uuid_string[37], download_uuid_string[37];
+                                uuid_generate(download_uuid);
+
+                                uuid_unparse(download_uuid, download_uuid_string);
+                                uuid_unparse(header.user_uuid, user_uuid_string);
+
+                                char file_path[sizeof(PROCESSING_FOLDER) + sizeof(user_uuid_string) + 1 + sizeof(download_uuid_string) + 1];
+                                snprintf(file_path, sizeof(file_path), "%s%s_%s", PROCESSING_FOLDER, user_uuid_string, download_uuid_string);
+
+                                printf("file path: %s\n", file_path);
+
+                                if ((clients_fd[i] = open(file_path, O_WRONLY | O_CREAT | O_APPEND, 0644)) == -1) {
+                                    perror("Couldn't create job file!");
+                                    exit(EXIT_FAILURE);
+                                }
+
+                                char download_buffer[BUFFER_SIZE];
+                                header.client_socket = fds[i].fd;
+                                make_packet(&header, download_buffer, BUFFER_SIZE);
+
+                                if (write(clients_fd[i], download_buffer, BUFFER_SIZE) <= 0) {
+                                    fprintf(stderr, "Couldn't write download job file");
+                                    exit(EXIT_FAILURE);
+                                }
+
+                                close(clients_fd[i]);
+                            }
                         }
                     }
                 }
@@ -250,7 +279,7 @@ void *notify_function(void *arg) {
         // TO DO //
     }
 
-    int watch_fd = inotify_add_watch(inotify_fd, PROCESSING_FOLDER, IN_MOVED_TO);
+    int watch_fd = inotify_add_watch(inotify_fd, PROCESSING_FOLDER, IN_MOVED_TO | IN_CREATE);
     if (watch_fd == -1) {
         perror("Couldn't add watch to folder through inotify");
         // TO DO //
@@ -268,9 +297,14 @@ void *notify_function(void *arg) {
         while (i < length) {
             struct inotify_event *event = (struct inotify_event *)&buffer[i];
 
-            if (event->len > 0 && (event->mask & IN_MOVED_TO)) {
-                printf("New thing created: %s\n", event->name);
-                enqueue(queue, event->name);
+            if (event->len > 0) {
+                if (event->mask & IN_MOVED_TO) {
+                    printf("New thing created: %s\n", event->name);
+                    enqueue(queue, event->name);
+                } else if (event->mask & IN_CREATE) {
+                    printf("New thing created: %s\n", event->name);
+                    enqueue(queue, event->name);
+                }
             }
 
             i += sizeof(struct inotify_event) + event->len;
@@ -291,12 +325,13 @@ void *processing_function(void *arg) {
             dequeue(queue, buffer);
 
             Header header;
-            char file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
-            char out_path[sizeof(OUTGOING_FOLDER) + FILE_NAME_LEN];
-            snprintf(file_path, sizeof(file_path), "%s%s", PROCESSING_FOLDER, buffer);
-            snprintf(out_path, sizeof(out_path), "%s%s", OUTGOING_FOLDER, buffer);
+            init_header(&header);
 
-            printf("file path: %s\n", file_path);
+            char file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
+            snprintf(file_path, sizeof(file_path), "%s%s", PROCESSING_FOLDER, buffer);
+
+            printf("file path2: %s\n", file_path);
+            sleep(1);
 
             int file_fd;
             if ((file_fd = open(file_path, O_RDONLY)) == -1) {
@@ -307,16 +342,53 @@ void *processing_function(void *arg) {
             ssize_t bytes_read;
             char content_buffer[BUFFER_SIZE];
 
-            int algorithm, key_len, enc_dec;
-            if ((bytes_read = read(file_fd, &content_buffer, BUFFER_SIZE)) <= 0) {
-                fprintf(stderr, "couldnt read algorithm in processing function");
+            if ((bytes_read = read(file_fd, &content_buffer, BUFFER_SIZE)) == 0) {
+                fprintf(stderr, "Empty file");
+            }   else if(bytes_read == -1){
+                perror("Couldn't read from designated file");
             }
             close(file_fd);
 
             header_from_buffer(&header, content_buffer, BUFFER_SIZE);
             print_header(&header);
 
-            run_symmetric(header.algorithm, header.enc_dec, file_path, out_path, header.key);
+            if (header.up_down == 0) {
+                char out_path[sizeof(OUTGOING_FOLDER) + FILE_NAME_LEN];
+                snprintf(out_path, sizeof(out_path), "%s%s", OUTGOING_FOLDER, buffer);
+                run_symmetric(header.algorithm, header.enc_dec, file_path, out_path, header.key);
+            } else {
+                char download_path[sizeof(OUTGOING_FOLDER) + FILE_NAME_LEN];
+
+                char unparsed_user_uuid[37], unparsed_job_uuid[37];
+                uuid_unparse(header.user_uuid, unparsed_user_uuid);
+                uuid_unparse(header.job_uuid, unparsed_job_uuid);
+
+                snprintf(download_path, sizeof(download_path), "%s%s_%s", OUTGOING_FOLDER, unparsed_user_uuid, unparsed_job_uuid);
+                printf("Download from %s\n", download_path);
+
+                int download_fd;
+                if((download_fd = open(download_path, O_RDONLY)) < 0) {
+                    perror("Couldn't open file to send");
+                    exit(EXIT_FAILURE);
+                }
+
+                ssize_t bytes_read;
+                char send_buffer[BUFFER_SIZE];
+                while ((bytes_read = read(download_fd, send_buffer, BUFFER_SIZE)) > 0) {
+                    if (write(header.client_socket, send_buffer, bytes_read) == -1) {
+                        perror("Couldn't write job uuid to client!");
+                        exit(EXIT_FAILURE);
+                    }
+                }
+
+                if(bytes_read == -1) {
+                    perror("Couldn't read from send file");
+                    exit(EXIT_FAILURE);
+                }
+
+                close(download_fd);
+            }
+
             if (remove(file_path) != 0) {
                 perror("Couldn't remove file from processing");
                 exit(EXIT_FAILURE);

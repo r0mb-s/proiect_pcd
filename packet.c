@@ -11,6 +11,7 @@ void init_header(Header *header) {
     header->key[0] = '\0';
     header->enc_dec = -1;
     header->message_len = -1;
+    header->client_socket = -1;
     memset(header->user_uuid, 0, sizeof(uuid_t));
     memset(header->job_uuid, 0, sizeof(uuid_t));
 }
@@ -53,5 +54,7 @@ void print_header(Header *header){
     char user_uuid[37], job_uuid[37];
     uuid_unparse(header->user_uuid, user_uuid);
     uuid_unparse(header->job_uuid, job_uuid);
-    printf("Upload/Download: %d\nFirst/Middle/Last: %d\nMessage length: %d\nAlgorithm: %d\nKey length: %d\nKey: %s\nEnc/Dec: %d\nUser UUID: %s\nJob UUID: %s\n", header->up_down, header->first_middle_last, header->message_len, header->algorithm, header->key_len, header->key, header->enc_dec, user_uuid, job_uuid);
+    printf("-------------------------\n\n");
+    printf("Upload/Download: %d\nFirst/Middle/Last: %d\nMessage length: %d\nAlgorithm: %d\nKey length: %d\nKey: %s\nEnc/Dec: %d\nUser UUID: %s\nJob UUID: %s\nClient socket: %d\n", header->up_down, header->first_middle_last, header->message_len, header->algorithm, header->key_len, header->key, header->enc_dec, user_uuid, job_uuid, header->client_socket);
+    printf("\n-------------------------\n");
 }
