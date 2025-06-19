@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <uuid/uuid.h>
 #include "cyphers.h"
+#include "packet.h"
 
 #define PORT 8090
 #define ADMIN_SOCKET_PATH "/tmp/pcd_admin_socket"
@@ -140,60 +141,39 @@ void *clients_function(void *arg) {
                         close(client_fd);
                     }
                 } else {
-                    int bytes_read = read(fds[i].fd, buffer, BUFFER_SIZE - 1);
+                    int bytes_read = read(fds[i].fd, buffer, BUFFER_SIZE);
+                    printf("Read\n");
                     if (bytes_read <= 0) {
+                        printf("BELEA FOARTE MARE\n");
                         close(fds[i].fd);
                         fds[i] = fds[nfds - 1];
                         nfds--;
                         i--;
                     } else {
-                        printf("byte read: %d\n", bytes_read);
-                        int first_message;
-                        memcpy(&first_message, buffer, sizeof(int));
+                        Header header;
+                        header_from_buffer(&header, buffer, BUFFER_SIZE);
 
-                        if (first_message == 1) {
+                        if (header.first_middle_last == 1) {
                             printf("First message\n");
                             uuid_t job_uuid;
                             char job_uuid_string[37], client_uuid_string[37];
-                            int algorithm, key_len, enc_dec;
-
-                            memcpy(&algorithm, buffer + sizeof(int), sizeof(int));
-                            memcpy(&key_len, buffer + 2 * sizeof(int), sizeof(int));
-                            printf("algorithm: %d\nkey length: %d\nenc or dec: %d\n", algorithm, key_len, enc_dec);
-
-                            char key[key_len];
-
-                            memcpy(&key, buffer + 3 * sizeof(int), key_len);
-                            printf("key: %.*s\n", key_len, key);
-
-                            memcpy(&enc_dec, buffer + 3 * sizeof(int) + key_len, sizeof(int));
-                            printf("enc_dec: %d\n", enc_dec);
-
-                            uuid_unparse(clients_uuid[i], client_uuid_string);
-
-                            char folder_name[sizeof(INCOMPLETE_FOLDER) + sizeof(client_uuid_string)];
-                            strncpy(folder_name, INCOMPLETE_FOLDER, sizeof(INCOMPLETE_FOLDER));
-                            strncpy(folder_name + sizeof(INCOMPLETE_FOLDER) - 1, client_uuid_string, sizeof(client_uuid_string));
-                            folder_name[sizeof(folder_name) - 1] = '\0';
-
-                            printf("folder name: %s\n", folder_name);
-
-                            char file_path[sizeof(INCOMPLETE_FOLDER) + sizeof(client_uuid_string) + 1 + sizeof(job_uuid_string) + 1];
 
                             uuid_generate(job_uuid);
-                            uuid_unparse(job_uuid, job_uuid_string);
+                            memcpy(header.user_uuid, clients_uuid[i], sizeof(uuid_t));
+                            memcpy(header.job_uuid, job_uuid, sizeof(uuid_t));
 
-                            // if (mkdir(folder_name, 0777) == -1) {
-                            //     perror("Couldn't create client folder!");
-                            // }
+                            uuid_unparse(header.job_uuid, job_uuid_string);
+                            uuid_unparse(header.user_uuid, client_uuid_string);
 
-                            if (write(fds[i].fd, &job_uuid, sizeof(uuid_t)) == -1) {
+                            char file_path[sizeof(INCOMPLETE_FOLDER) + sizeof(client_uuid_string) + 1 + sizeof(job_uuid_string) + 1];
+                            make_packet(&header, buffer, BUFFER_SIZE);
+
+                            if (write(fds[i].fd, buffer, BUFFER_SIZE) == -1) {
                                 perror("Couldn't write job uuid to client!");
                                 // TO DO //
                             }
 
                             snprintf(file_path, sizeof(file_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
-                            printf("path: %s\n", file_path);
 
                             if ((clients_fd[i] = open(file_path, O_WRONLY | O_CREAT | O_APPEND, 0644)) == -1) {
                                 perror("Couldn't create job file!");
@@ -201,73 +181,41 @@ void *clients_function(void *arg) {
                             }
 
                             ssize_t bytes_written;
-                            if ((bytes_written = write(clients_fd[i], &algorithm, sizeof(int))) <= 0) {
+                            if ((bytes_written = write(clients_fd[i], &header, sizeof(Header))) <= 0) {
                                 perror("Couldn't write to client file!");
                                 // TO DO //
                             }
-                            if ((bytes_written = write(clients_fd[i], &key_len, sizeof(int))) <= 0) {
-                                perror("Couldn't write to client file!");
-                                // TO DO //
-                            }
-                            if ((bytes_written = write(clients_fd[i], &key, key_len)) <= 0) {
-                                perror("Couldn't write to client file!");
-                                // TO DO //
-                            }
-                            if ((bytes_written = write(clients_fd[i], &enc_dec, sizeof(int))) <= 0) {
-                                perror("Couldn't write to client file!");
-                                // TO DO //
-                            }
-                        } else if (first_message == 0 || first_message == 2) {
-                            printf("Second message\n");
-                            printf("message number: %d\n", first_message);
-
-                            if (first_message == 2) {
-                                close(clients_fd[i]);
-                                printf("AM ajuns la ultimul pachet\n");
-
-                                char incomplete_path[sizeof(INCOMPLETE_FOLDER) + FILE_NAME_LEN];
-                                char process_file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
-
-                                uuid_t job_uuid;
-                                char job_uuid_string[37], client_uuid_string[37];
-                                int message_len;
-
-                                memcpy(&job_uuid, buffer + sizeof(int), sizeof(uuid_t));
-
-                                uuid_unparse(job_uuid, job_uuid_string);
-                                uuid_unparse(clients_uuid[i], client_uuid_string);
-
-                                snprintf(incomplete_path, sizeof(incomplete_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
-                                snprintf(process_file_path, sizeof(process_file_path), "%s%s_%s", PROCESSING_FOLDER, client_uuid_string, job_uuid_string);
-
-                                printf("incomplete path: %s\n", incomplete_path);
-                                printf("processing path: %s\n", process_file_path);
-
-                                if (rename(incomplete_path, process_file_path) == -1) {
-                                    perror("error on move");
-                                    // TO DO //
-                                }
-                                continue;
-                            }
-
-                            uuid_t job_uuid;
-                            char job_uuid_string[37], client_uuid_string[37];
-                            int message_len;
-
-                            memcpy(&job_uuid, buffer + sizeof(int), sizeof(uuid_t));
-                            memcpy(&message_len, buffer + sizeof(int) + sizeof(uuid_t), sizeof(int));
-
-                            uuid_unparse(job_uuid, job_uuid_string);
-                            uuid_unparse(clients_uuid[i], client_uuid_string);
-
-                            printf("client uuid: %s\njob_uuid: %s\n", client_uuid_string, job_uuid_string);
-
-                            printf("message len: %d\n", message_len);
+                        } else if (header.first_middle_last == 0) {
+                            printf("Middle message\n");
                             ssize_t bytes_written;
-                            if ((bytes_written = write(clients_fd[i], buffer + sizeof(int) + sizeof(uuid_t) + sizeof(int), message_len)) <= 0) {
+                            if ((bytes_written = write(clients_fd[i], buffer + sizeof(Header), header.message_len)) <= 0) {
                                 perror("Couldn't write to client file!");
+                                exit(EXIT_FAILURE);
+                            }
+                        } else if (header.first_middle_last == 2) {
+                            printf("AM ajuns la ultimul pachet\n");
+
+                            close(clients_fd[i]);
+
+                            char incomplete_path[sizeof(INCOMPLETE_FOLDER) + FILE_NAME_LEN];
+                            char process_file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
+
+                            char job_uuid_string[37], client_uuid_string[37];
+
+                            uuid_unparse(header.job_uuid, job_uuid_string);
+                            uuid_unparse(header.user_uuid, client_uuid_string);
+
+                            snprintf(incomplete_path, sizeof(incomplete_path), "%s%s_%s", INCOMPLETE_FOLDER, client_uuid_string, job_uuid_string);
+                            snprintf(process_file_path, sizeof(process_file_path), "%s%s_%s", PROCESSING_FOLDER, client_uuid_string, job_uuid_string);
+
+                            printf("incomplete path: %s\n", incomplete_path);
+                            printf("processing path: %s\n", process_file_path);
+
+                            if (rename(incomplete_path, process_file_path) == -1) {
+                                perror("error on move");
                                 // TO DO //
                             }
+                            continue;
                         } else {
                             printf("Belea mare\n");
                             close(clients_fd[i]);
@@ -342,6 +290,7 @@ void *processing_function(void *arg) {
         if (!is_empty(queue)) {
             dequeue(queue, buffer);
 
+            Header header;
             char file_path[sizeof(PROCESSING_FOLDER) + FILE_NAME_LEN];
             char out_path[sizeof(OUTGOING_FOLDER) + FILE_NAME_LEN];
             snprintf(file_path, sizeof(file_path), "%s%s", PROCESSING_FOLDER, buffer);
@@ -352,7 +301,6 @@ void *processing_function(void *arg) {
             int file_fd;
             if ((file_fd = open(file_path, O_RDONLY)) == -1) {
                 perror("Couldn't open file in processing function!");
-                // TO DO //
                 exit(EXIT_FAILURE);
             }
 
@@ -360,30 +308,16 @@ void *processing_function(void *arg) {
             char content_buffer[BUFFER_SIZE];
 
             int algorithm, key_len, enc_dec;
-            if ((bytes_read = read(file_fd, &algorithm, sizeof(int))) <= 0) {
+            if ((bytes_read = read(file_fd, &content_buffer, BUFFER_SIZE)) <= 0) {
                 fprintf(stderr, "couldnt read algorithm in processing function");
             }
-            if ((bytes_read = read(file_fd, &key_len, sizeof(int))) <= 0) {
-                fprintf(stderr, "couldnt read key_len in processing function");
-            }
-
-            char key[key_len];
-            if ((bytes_read = read(file_fd, &key, key_len)) <= 0) {
-                fprintf(stderr, "couldnt read key in processing function");
-            }
-
-            if ((bytes_read = read(file_fd, &enc_dec, sizeof(int))) <= 0) {
-                fprintf(stderr, "couldnt read enc_dec in processing function");
-            }
-
-            lseek(file_fd, 0, SEEK_SET);
             close(file_fd);
 
-            printf("Algorithm: %d, Key length: %d, Key: %.*s, Enc or dec: %d\n", algorithm, key_len, key_len, key, enc_dec);
+            header_from_buffer(&header, content_buffer, BUFFER_SIZE);
+            print_header(&header);
 
-            printf("strlen for %s: %lu\n", key, strlen(key));
-            run_symmetric(algorithm, enc_dec, file_path, out_path, key);
-            if(remove(file_path) != 0) {
+            run_symmetric(header.algorithm, header.enc_dec, file_path, out_path, header.key);
+            if (remove(file_path) != 0) {
                 perror("Couldn't remove file from processing");
                 exit(EXIT_FAILURE);
             }

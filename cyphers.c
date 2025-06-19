@@ -1,3 +1,4 @@
+#include "packet.h"
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -26,7 +27,7 @@ int encrypt_aes256_cbc(const char *infile, const char *outfile, const char *pass
         return 0;
     }
 
-    if (fseek(fin, 20, SEEK_SET) != 0)
+    if (fseek(fin, sizeof(Header), SEEK_SET) != 0)
     {
         perror("fseek");
         fclose(fin);
@@ -101,7 +102,7 @@ int decrypt_aes256_cbc(const char *infile, const char *outfile, const char *pass
         return 0;
     }
 
-    if (fseek(fin, 20, SEEK_SET) != 0)
+    if (fseek(fin, sizeof(Header), SEEK_SET) != 0)
     {
         perror("fseek");
         fclose(fin);
