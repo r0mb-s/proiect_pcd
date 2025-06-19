@@ -19,6 +19,9 @@
 #include <uuid/uuid.h>
 #include "cyphers.h"
 #include "packet.h"
+#include "shared_poll.h"
+#include <fnmatch.h>
+#include <dirent.h>
 
 #define PORT 8090
 #define ADMIN_SOCKET_PATH "/tmp/pcd_admin_socket"
@@ -33,6 +36,10 @@
 #define PACKET_SIZE 4096
 
 Logger logger;
+SharedPoll poll_data = {
+    .nfds = 1,
+    .lock = PTHREAD_MUTEX_INITIALIZER
+};
 
 void *admin_function(void *arg) {
     int server_fd, admin_fd;
@@ -66,7 +73,13 @@ void *admin_function(void *arg) {
             // TO DO //
         }
 
-        // TO DO //
+        printf("found admin client\n");
+
+        pthread_mutex_lock(&poll_data.lock);
+        for (int i = 1; i < poll_data.nfds; i++) {
+            printf("Client FD: %d\n", poll_data.fds[i].fd);
+        }
+        pthread_mutex_unlock(&poll_data.lock);
 
         close(admin_fd);
     }
@@ -83,9 +96,6 @@ void *clients_function(void *arg) {
     for (int i = 0; i < sizeof(clients_uuid); i++) {
         uuid_generate(clients_uuid[i]);
     }
-
-    struct pollfd fds[MAX_NUMBER_OF_CLIENTS + 1];
-    int nfds = 1;
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Error on creating socket");
@@ -112,19 +122,21 @@ void *clients_function(void *arg) {
         pthread_exit(NULL);
     }
 
-    fds[0].fd = server_fd;
-    fds[0].events = POLLIN;
+    pthread_mutex_lock(&poll_data.lock);
+    poll_data.fds[0].fd = server_fd;
+    poll_data.fds[0].events = POLLIN;
+    pthread_mutex_unlock(&poll_data.lock);
 
     while (1) {
-        int poll_count = poll(fds, nfds, -1);
+        int poll_count = poll(poll_data.fds, poll_data.nfds, -1);
         if (poll_count == -1) {
             perror("poll failed");
             break;
         }
 
-        for (int i = 0; i < nfds; i++) {
-            if (fds[i].revents & POLLIN) {
-                if (fds[i].fd == server_fd) {
+        for (int i = 0; i < poll_data.nfds; i++) {
+            if (poll_data.fds[i].revents & POLLIN) {
+                if (poll_data.fds[i].fd == server_fd) {
                     addr_len = sizeof(client_addr);
                     client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
                     if (client_fd == -1) {
@@ -132,21 +144,53 @@ void *clients_function(void *arg) {
                         continue;
                     }
 
-                    if (nfds < MAX_NUMBER_OF_CLIENTS + 1) {
-                        fds[nfds].fd = client_fd;
-                        fds[nfds].events = POLLIN;
-                        nfds++;
+                    if (poll_data.nfds < MAX_NUMBER_OF_CLIENTS + 1) {
+                        poll_data.fds[poll_data.nfds].fd = client_fd;
+                        poll_data.fds[poll_data.nfds].events = POLLIN;
+                        poll_data.nfds++;
                     } else {
                         printf("Too many clients\n");
                         close(client_fd);
                     }
                 } else {
-                    int bytes_read = read(fds[i].fd, buffer, BUFFER_SIZE);
+                    int bytes_read = read(poll_data.fds[i].fd, buffer, BUFFER_SIZE);
                     if (bytes_read <= 0) {
                         printf("BELEA FOARTE MARE\n");
-                        close(fds[i].fd);
-                        fds[i] = fds[nfds - 1];
-                        nfds--;
+                        close(poll_data.fds[i].fd);
+
+                        char files_to_be_removed[37 + 1 + 1];
+                        char client_to_be_removed[37];
+                        uuid_unparse(clients_uuid[i], client_to_be_removed);
+                        snprintf(files_to_be_removed, sizeof(files_to_be_removed), "%s*", client_to_be_removed);
+
+                        printf("files to be removed: %s\n", files_to_be_removed);
+
+                        DIR *dir = opendir(OUTGOING_FOLDER);
+                        if (!dir) {
+                            perror("opendir");
+                            exit(EXIT_FAILURE);
+                        }
+
+                        struct dirent *entry;
+                        while ((entry = readdir(dir)) != NULL) {
+                            if (fnmatch(files_to_be_removed, entry->d_name, 0) == 0) {
+                                char fname[sizeof(OUTGOING_FOLDER) + 37 + 1 + 37 + 1];
+                                snprintf(fname, sizeof(fname), "%s%s", OUTGOING_FOLDER, entry->d_name);
+                                printf("file: %s\n", fname);
+                                if (unlink(fname) == 0) {
+                                    printf("Deleted: %s\n", entry->d_name);
+                                } else {
+                                    perror("Error deleting file");
+                                }
+                            }
+                        }
+
+                        closedir(dir);
+
+                        memcpy(clients_uuid[i], clients_uuid[poll_data.nfds - 1], sizeof(uuid_t));
+                        clients_fd[i] = clients_fd[poll_data.nfds - 1];
+                        poll_data.fds[i] = poll_data.fds[poll_data.nfds - 1];
+                        poll_data.nfds--;
                         i--;
                     } else {
                         Header header;
@@ -169,7 +213,7 @@ void *clients_function(void *arg) {
                                 char file_path[sizeof(INCOMPLETE_FOLDER) + sizeof(client_uuid_string) + 1 + sizeof(job_uuid_string) + 1];
                                 make_packet(&header, buffer, BUFFER_SIZE);
 
-                                if (write(fds[i].fd, buffer, BUFFER_SIZE) == -1) {
+                                if (write(poll_data.fds[i].fd, buffer, BUFFER_SIZE) == -1) {
                                     perror("Couldn't write job uuid to client!");
                                     // TO DO //
                                 }
@@ -239,7 +283,7 @@ void *clients_function(void *arg) {
                                 }
 
                                 char download_buffer[BUFFER_SIZE];
-                                header.client_socket = fds[i].fd;
+                                header.client_socket = poll_data.fds[i].fd;
                                 make_packet(&header, download_buffer, BUFFER_SIZE);
 
                                 if (write(clients_fd[i], download_buffer, BUFFER_SIZE) <= 0) {
@@ -256,8 +300,8 @@ void *clients_function(void *arg) {
         }
     }
 
-    for (int i = 0; i < nfds; i++) {
-        close(fds[i].fd);
+    for (int i = 0; i < poll_data.nfds; i++) {
+        close(poll_data.fds[i].fd);
     }
     pthread_exit(NULL);
 }
@@ -344,7 +388,7 @@ void *processing_function(void *arg) {
 
             if ((bytes_read = read(file_fd, &content_buffer, BUFFER_SIZE)) == 0) {
                 fprintf(stderr, "Empty file");
-            }   else if(bytes_read == -1){
+            } else if (bytes_read == -1) {
                 perror("Couldn't read from designated file");
             }
             close(file_fd);
@@ -367,7 +411,7 @@ void *processing_function(void *arg) {
                 printf("Download from %s\n", download_path);
 
                 int download_fd;
-                if((download_fd = open(download_path, O_RDONLY)) < 0) {
+                if ((download_fd = open(download_path, O_RDONLY)) < 0) {
                     perror("Couldn't open file to send");
                     exit(EXIT_FAILURE);
                 }
@@ -381,7 +425,7 @@ void *processing_function(void *arg) {
                     }
                 }
 
-                if(bytes_read == -1) {
+                if (bytes_read == -1) {
                     perror("Couldn't read from send file");
                     exit(EXIT_FAILURE);
                 }

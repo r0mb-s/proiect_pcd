@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <uuid/uuid.h>
 #include <ncurses.h>
+#include <errno.h>
 
 #include "packet.h"
 
@@ -27,7 +28,7 @@ void download_file(const char *filename, Header *header);
 
 int main() {
     struct sockaddr_in server_addr;
-     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Couldn't create socket");
         exit(EXIT_FAILURE);
     }
@@ -155,7 +156,7 @@ void handle_download() {
     getch();
 }
 
-void upload_file(const char *filename, Header *header) {    
+void upload_file(const char *filename, Header *header) {
     char buffer[BUFFER_SIZE];
 
     make_packet(header, buffer, BUFFER_SIZE);
@@ -226,20 +227,20 @@ void download_file(const char *filepath, Header *header) {
     }
 
     int out_file_fd;
-    if((out_file_fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0) {
+    if ((out_file_fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0) {
         perror("Couldn't open output file");
         return;
     }
 
     ssize_t bytes_read, bytes_written;
     while ((bytes_read = read(sockfd, buffer, BUFFER_SIZE)) > 0) {
-        if((bytes_written = write(out_file_fd, buffer, bytes_read)) <= 0) {
+        if ((bytes_written = write(out_file_fd, buffer, bytes_read)) <= 0) {
             fprintf(stderr, "Couldn't write to output file");
             return;
         }
     }
 
-    if (bytes_read <= 0) {
+    if (bytes_read < 0) {
         fprintf(stderr, "Couldn't read response from server");
         return;
     }
